@@ -1,0 +1,203 @@
+Importing the required libraries
+
+import pandas as pd
+import re
+import random
+import tarfile
+import os
+import math
+
+Connecting google drive with notebook
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+Extracting data from the tar file which was downloaded from the https://devopedia.org/text-corpus-for-nlp.
+To extract data from tarfile we've imported the module tar
+
+from google.colab import drive
+drive.mount('/content/drive')
+import tarfile
+fname = "/content/drive/MyDrive/nlp dataset/aclImdb_v1.tar.gz"
+tar = tarfile.open(fname, "r:gz")
+tar.extractall('.')
+tar.close()
+
+Creaintg corpus from downloaded data
+
+reviews = []
+def adder(file):
+  for i in os.listdir(file):
+    fname = os.path.join(file,i)
+    f = open(fname,'r')
+    reviews.append(f.read().split("."))
+
+adder("/content/aclImdb/train/pos")
+adder("/content/aclImdb/train/neg")
+
+len(reviews) #total no of reviews
+
+Size of the corpus
+
+data = []
+for i in reviews:
+  for j in i:
+    if j!="":
+      data.append(j)
+len(data)
+
+Removing punctuations and additional html tags from the corpus(i.e.,cleaning data)
+
+reg = "<br /><br />|\'s|\.\.+|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\-|\=|\+|\}|\{|\[|\]|\:|\;|\'|\"|\>|\<|\,|\/|\`|\~"
+def tagremover(sent):
+  sent = re.sub(reg," ",sent)
+  return sent
+
+for i in range(len(data)):
+  data[i] = tagremover(data[i]).lower().strip()
+data
+from tqdm import tqdm
+
+Creating Ngram model(i.e., finding ngram probabilities)
+
+class N_gram:
+  def __init__(self,data,n):
+    self.data = data
+    self.n = n
+  def gramDiv(self):
+    list_of_ngrams=[]
+    gram_count = dict()
+    hist_count = dict()
+    sent_data=[]
+    if n==1:
+      for i in tqdm(range(len(self.data))):
+        sentence = data[i].split()
+        for j in range(len(sentence)):
+          current_word = sentence[j]
+          list_of_ngrams.append((current_word))
+          gram_count[(current_word)] = gram_count.get((current_word), 0)+1
+          hist_count[(current_word)] = hist_count.get(((current_word)),0)+1
+    else:
+      for i in tqdm(range(len(self.data))):
+        sent = "<s> "*(self.n-1)+self.data[i]+" </s>"
+        sent_data.append(sent)
+        
+        sentence = sent.split()
+        given_n_word = sentence[:self.n-1]
+        for j in range(self.n-1,len(sentence)):
+          current_word = sentence[j]
+          list_of_ngrams.append((tuple(given_n_word), current_word))
+          gram_count[(tuple(given_n_word), current_word)] = gram_count.get((tuple(given_n_word), current_word), 0)+1
+          hist_count[tuple(given_n_word)] = hist_count.get(tuple(given_n_word),0)+1 
+          given_n_word.pop(0)
+          given_n_word +=[current_word]
+    return gram_count,hist_count,list_of_ngrams,sent_data
+
+n=int(input("Enter n-value:"))
+obj = N_gram(data,n)
+gram_n1_count,gram_n0_count,list_of_ngrams,sent_data= obj.gramDiv()
+
+def word_count_in_corpus(sent_data):
+  word_count_corpus=dict()
+  for i in tqdm(range(len(sent_data))):
+    for j in sent_data[i].split():
+      word_count_corpus[j]=word_count_corpus.get(j,0)+1
+  return word_count_corpus
+
+word_count_corpus= word_count_in_corpus(sent_data)
+
+word_count_corpus
+
+len(word_count_corpus) #vocabulary size i.e., unique words in corpus
+
+gram_n1_count
+gram_n0_count
+list_of_ngrams
+sent_data
+
+Finding probabilities
+
+def calculate_prob(gram_n0_count,gram_n1_count,list_of_ngrams):
+  ngram_probs=dict()
+  for i in list_of_ngrams:
+    numerator=gram_n1_count.get(i)
+    denominator=gram_n0_count.get(i[0])
+    ngram_probs[i]=numerator/denominator
+  return ngram_probs
+
+ngram_probs=calculate_prob(gram_n0_count,gram_n1_count,list_of_ngrams)
+data[0]
+ngram_probs #probabilities of ngrams
+test_data= []
+def adder(file):
+  for i in os.listdir(file):
+    fname = os.path.join(file,i)
+    f = open(fname,'r')
+    test_data.append(f.read().split("."))
+adder("/content/aclImdb/test/neg")
+
+Importing secrets module of python for generating random text sentence from testing data
+
+import secrets
+test_sentence=secrets.choice(secrets.choice(test_data))
+test_sentence
+test_sentence=tagremover(test_sentence).lower().strip()
+test_sentence
+
+Finding probabilities for test sentence
+
+def prob_for_test_sent(test_sentence,n):
+  list_of_ngrams_of_sent=[]
+  sent = "<s> "*(n-1)+test_sentence+" </s>"
+  sentence_list = sent.split()
+  given_n_word = sentence_list[:n-1]
+  for j in range(n-1,len(sentence_list)):
+    current_word = sentence_list[j]
+    list_of_ngrams_of_sent.append((tuple(given_n_word), current_word))
+    given_n_word.pop(0)
+    given_n_word +=[current_word]
+  return list_of_ngrams_of_sent,sentence_list
+
+list_of_ngrams_of_sent,sentence_list=prob_for_test_sent(test_sentence,n)
+list_of_ngrams_of_sent
+sentence_list
+
+Finding vocabulary size
+
+def calc_of_V(sentence_list,word_count_corpus):
+  v=0
+  for i in range(len(sentence_list)):
+    if sentence_list[i] in word_count_corpus:
+      v+=word_count_corpus.get(sentence_list[i])
+  return v
+v=calc_of_V(sentence_list,word_count_corpus)
+v
+list_of_ngrams_of_sent
+list_of_ngrams_of_sent[0][1]
+
+Finding perplexity for the test sentence
+
+def perplexity_of_test_sent(list_of_ngrams_of_sent,n,v):
+  sent_prob=1
+  for j in list_of_ngrams_of_sent:
+    given_n_word=j[0]
+    current_word=j[1]
+    if ((given_n_word, current_word)) in gram_n1_count.keys():
+      numerator1=gram_n1_count.get((tuple(given_n_word), current_word))+1
+    if ((given_n_word, current_word)) not in gram_n1_count.keys():
+      numerator1=0+1
+    if given_n_word in gram_n0_count.keys():
+      denominator1=gram_n0_count.get(tuple(given_n_word))+v
+    if given_n_word not in gram_n0_count.keys():
+      denominator1=0+v
+    probobality=numerator1/denominator1
+    sent_prob*=probobality
+  
+  return sent_prob
+sent_prob=perplexity_of_test_sent(list_of_ngrams_of_sent,n,v)
+import math
+print("perplexity of the test sentence in with respect to corpus")
+math.pow(sent_prob,(1/len(sentence_list))) # perplexity of test sentence
+
+perplexity of the test sentence in with respect to corpus
+1.0394467634122447e-05
