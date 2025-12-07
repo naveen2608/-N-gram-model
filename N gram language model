@@ -1,203 +1,240 @@
-Importing the required libraries
-
+# Importing the required libraries
 import pandas as pd
 import re
 import random
 import tarfile
 import os
 import math
+from tqdm import tqdm
+import secrets
 
-Connecting google drive with notebook
-
+# Connecting google drive with notebook
 from google.colab import drive
 drive.mount('/content/drive')
 
-Extracting data from the tar file which was downloaded from the https://devopedia.org/text-corpus-for-nlp.
-To extract data from tarfile we've imported the module tar
-
-from google.colab import drive
-drive.mount('/content/drive')
-import tarfile
+# Extracting data from the tar file
 fname = "/content/drive/MyDrive/nlp dataset/aclImdb_v1.tar.gz"
 tar = tarfile.open(fname, "r:gz")
 tar.extractall('.')
 tar.close()
 
-Creaintg corpus from downloaded data
-
+# Creating corpus from downloaded data
 reviews = []
 def adder(file):
-  for i in os.listdir(file):
-    fname = os.path.join(file,i)
-    f = open(fname,'r')
-    reviews.append(f.read().split("."))
+    for i in os.listdir(file):
+        fname = os.path.join(file, i)
+        f = open(fname, 'r')
+        reviews.append(f.read().split("."))
 
 adder("/content/aclImdb/train/pos")
 adder("/content/aclImdb/train/neg")
 
-len(reviews) #total no of reviews
+print(f"Total reviews: {len(reviews)}")
 
-Size of the corpus
-
+# Size of the corpus
 data = []
 for i in reviews:
-  for j in i:
-    if j!="":
-      data.append(j)
-len(data)
+    for j in i:
+        if j != "":
+            data.append(j)
+print(f"Total sentences: {len(data)}")
 
-Removing punctuations and additional html tags from the corpus(i.e.,cleaning data)
-
+# Removing punctuations and additional html tags from the corpus
 reg = "<br /><br />|\'s|\.\.+|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\-|\=|\+|\}|\{|\[|\]|\:|\;|\'|\"|\>|\<|\,|\/|\`|\~"
 def tagremover(sent):
-  sent = re.sub(reg," ",sent)
-  return sent
+    sent = re.sub(reg, " ", sent)
+    return sent
 
 for i in range(len(data)):
-  data[i] = tagremover(data[i]).lower().strip()
-data
-from tqdm import tqdm
+    data[i] = tagremover(data[i]).lower().strip()
 
-Creating Ngram model(i.e., finding ngram probabilities)
+print("Data cleaning completed!")
 
+# Creating N-gram model
 class N_gram:
-  def __init__(self,data,n):
-    self.data = data
-    self.n = n
-  def gramDiv(self):
-    list_of_ngrams=[]
-    gram_count = dict()
-    hist_count = dict()
-    sent_data=[]
-    if n==1:
-      for i in tqdm(range(len(self.data))):
-        sentence = data[i].split()
-        for j in range(len(sentence)):
-          current_word = sentence[j]
-          list_of_ngrams.append((current_word))
-          gram_count[(current_word)] = gram_count.get((current_word), 0)+1
-          hist_count[(current_word)] = hist_count.get(((current_word)),0)+1
-    else:
-      for i in tqdm(range(len(self.data))):
-        sent = "<s> "*(self.n-1)+self.data[i]+" </s>"
-        sent_data.append(sent)
+    def __init__(self, data, n):
+        self.data = data
+        self.n = n
+    
+    def gramDiv(self):
+        gram_count = dict()
+        hist_count = dict()
+        sent_data = []
         
-        sentence = sent.split()
-        given_n_word = sentence[:self.n-1]
-        for j in range(self.n-1,len(sentence)):
-          current_word = sentence[j]
-          list_of_ngrams.append((tuple(given_n_word), current_word))
-          gram_count[(tuple(given_n_word), current_word)] = gram_count.get((tuple(given_n_word), current_word), 0)+1
-          hist_count[tuple(given_n_word)] = hist_count.get(tuple(given_n_word),0)+1 
-          given_n_word.pop(0)
-          given_n_word +=[current_word]
-    return gram_count,hist_count,list_of_ngrams,sent_data
+        if self.n == 1:
+            # Unigram case
+            for i in tqdm(range(len(self.data)), desc="Processing unigrams"):
+                sent = "<s> " + self.data[i] + " </s>"
+                sent_data.append(sent)
+                sentence = sent.split()
+                
+                for word in sentence:
+                    gram_count[(word,)] = gram_count.get((word,), 0) + 1
+                    hist_count[('',)] = hist_count.get(('',), 0) + 1
+        else:
+            # N-gram case (bigram, trigram, etc.)
+            for i in tqdm(range(len(self.data)), desc=f"Processing {self.n}-grams"):
+                sent = "<s> " * (self.n - 1) + self.data[i] + " </s>"
+                sent_data.append(sent)
+                
+                sentence = sent.split()
+                given_n_word = sentence[:self.n - 1]
+                
+                for j in range(self.n - 1, len(sentence)):
+                    current_word = sentence[j]
+                    gram_count[(tuple(given_n_word), current_word)] = gram_count.get((tuple(given_n_word), current_word), 0) + 1
+                    hist_count[tuple(given_n_word)] = hist_count.get(tuple(given_n_word), 0) + 1
+                    given_n_word.pop(0)
+                    given_n_word.append(current_word)
+        
+        return gram_count, hist_count, sent_data
 
-n=int(input("Enter n-value:"))
-obj = N_gram(data,n)
-gram_n1_count,gram_n0_count,list_of_ngrams,sent_data= obj.gramDiv()
+# Get n value from user
+n = int(input("Enter n-value (1 for unigram, 2 for bigram, 3 for trigram, etc.): "))
+obj = N_gram(data, n)
+gram_n1_count, gram_n0_count, sent_data = obj.gramDiv()
 
+# Calculate vocabulary size (corrected)
 def word_count_in_corpus(sent_data):
-  word_count_corpus=dict()
-  for i in tqdm(range(len(sent_data))):
-    for j in sent_data[i].split():
-      word_count_corpus[j]=word_count_corpus.get(j,0)+1
-  return word_count_corpus
+    word_count_corpus = dict()
+    for i in tqdm(range(len(sent_data)), desc="Counting vocabulary"):
+        for j in sent_data[i].split():
+            word_count_corpus[j] = word_count_corpus.get(j, 0) + 1
+    return word_count_corpus
 
-word_count_corpus= word_count_in_corpus(sent_data)
+word_count_corpus = word_count_in_corpus(sent_data)
+vocabulary_size = len(word_count_corpus)  # CORRECTED: Just count unique words
+print(f"Vocabulary size: {vocabulary_size}")
 
-word_count_corpus
+# Finding probabilities
+def calculate_prob(gram_n0_count, gram_n1_count):
+    ngram_probs = dict()
+    for ngram, count in gram_n1_count.items():
+        if n == 1:
+            history = ('',)
+        else:
+            history = ngram[0]
+        numerator = count
+        denominator = gram_n0_count.get(history, 0)
+        if denominator > 0:
+            ngram_probs[ngram] = numerator / denominator
+    return ngram_probs
 
-len(word_count_corpus) #vocabulary size i.e., unique words in corpus
+ngram_probs = calculate_prob(gram_n0_count, gram_n1_count)
+print(f"Total n-gram probabilities calculated: {len(ngram_probs)}")
 
-gram_n1_count
-gram_n0_count
-list_of_ngrams
-sent_data
+# Load test data
+test_data = []
+def adder_test(file):
+    for i in os.listdir(file):
+        fname = os.path.join(file, i)
+        f = open(fname, 'r')
+        test_data.append(f.read().split("."))
 
-Finding probabilities
+adder_test("/content/aclImdb/test/neg")
+print(f"Test data loaded: {len(test_data)} reviews")
 
-def calculate_prob(gram_n0_count,gram_n1_count,list_of_ngrams):
-  ngram_probs=dict()
-  for i in list_of_ngrams:
-    numerator=gram_n1_count.get(i)
-    denominator=gram_n0_count.get(i[0])
-    ngram_probs[i]=numerator/denominator
-  return ngram_probs
+# Select random test sentence
+test_sentence = secrets.choice(secrets.choice(test_data))
+test_sentence = tagremover(test_sentence).lower().strip()
+print(f"\nTest sentence: {test_sentence}")
 
-ngram_probs=calculate_prob(gram_n0_count,gram_n1_count,list_of_ngrams)
-data[0]
-ngram_probs #probabilities of ngrams
-test_data= []
-def adder(file):
-  for i in os.listdir(file):
-    fname = os.path.join(file,i)
-    f = open(fname,'r')
-    test_data.append(f.read().split("."))
-adder("/content/aclImdb/test/neg")
+# Finding n-grams for test sentence
+def prob_for_test_sent(test_sentence, n):
+    list_of_ngrams_of_sent = []
+    sent = "<s> " * (n - 1) + test_sentence + " </s>"
+    sentence_list = sent.split()
+    
+    if n == 1:
+        for word in sentence_list:
+            list_of_ngrams_of_sent.append((('',), word))
+    else:
+        given_n_word = sentence_list[:n - 1]
+        for j in range(n - 1, len(sentence_list)):
+            current_word = sentence_list[j]
+            list_of_ngrams_of_sent.append((tuple(given_n_word), current_word))
+            given_n_word.pop(0)
+            given_n_word.append(current_word)
+    
+    return list_of_ngrams_of_sent, sentence_list
 
-Importing secrets module of python for generating random text sentence from testing data
+list_of_ngrams_of_sent, sentence_list = prob_for_test_sent(test_sentence, n)
 
-import secrets
-test_sentence=secrets.choice(secrets.choice(test_data))
-test_sentence
-test_sentence=tagremover(test_sentence).lower().strip()
-test_sentence
+# CORRECTED: Perplexity calculation with proper formula
+def perplexity_of_test_sent(list_of_ngrams_of_sent, n, vocabulary_size):
+    log_prob_sum = 0  # Use log to avoid underflow
+    
+    for j in list_of_ngrams_of_sent:
+        given_n_word = j[0]
+        current_word = j[1]
+        
+        # Add-1 (Laplace) smoothing - CORRECTED with if-else
+        if (given_n_word, current_word) in gram_n1_count:
+            numerator = gram_n1_count[(given_n_word, current_word)] + 1
+        else:
+            numerator = 1
+        
+        if given_n_word in gram_n0_count:
+            denominator = gram_n0_count[given_n_word] + vocabulary_size
+        else:
+            denominator = vocabulary_size
+        
+        probability = numerator / denominator
+        log_prob_sum += math.log(probability)
+    
+    # CORRECTED: Perplexity = exp(-1/N * log(P(sentence)))
+    perplexity = math.exp(-log_prob_sum / len(list_of_ngrams_of_sent))
+    
+    # Also calculate sentence probability
+    sent_prob = math.exp(log_prob_sum)
+    
+    return perplexity, sent_prob
 
-Finding probabilities for test sentence
+perplexity, sent_prob = perplexity_of_test_sent(list_of_ngrams_of_sent, n, vocabulary_size)
 
-def prob_for_test_sent(test_sentence,n):
-  list_of_ngrams_of_sent=[]
-  sent = "<s> "*(n-1)+test_sentence+" </s>"
-  sentence_list = sent.split()
-  given_n_word = sentence_list[:n-1]
-  for j in range(n-1,len(sentence_list)):
-    current_word = sentence_list[j]
-    list_of_ngrams_of_sent.append((tuple(given_n_word), current_word))
-    given_n_word.pop(0)
-    given_n_word +=[current_word]
-  return list_of_ngrams_of_sent,sentence_list
+print("\n" + "="*50)
+print("RESULTS")
+print("="*50)
+print(f"Sentence probability: {sent_prob:.2e}")
+print(f"Perplexity of the test sentence: {perplexity:.4f}")
+print("="*50)
 
-list_of_ngrams_of_sent,sentence_list=prob_for_test_sent(test_sentence,n)
-list_of_ngrams_of_sent
-sentence_list
+# BONUS: Next word prediction function
+def predict_next_word(history, ngram_probs, top_k=5):
+    """
+    Predict the next word given a history
+    history: tuple of previous words (for bigram: 1 word, trigram: 2 words, etc.)
+    """
+    candidates = {}
+    
+    # Convert history string to tuple if needed
+    if isinstance(history, str):
+        history = tuple(history.lower().split())
+    
+    # Find all possible next words
+    for ngram, prob in ngram_probs.items():
+        if n == 1:
+            # For unigram, just return most common words
+            candidates[ngram[0]] = prob
+        else:
+            # For n-grams, match the history
+            if ngram[0] == history:
+                candidates[ngram[1]] = prob
+    
+    # Sort by probability and return top k
+    sorted_candidates = sorted(candidates.items(), key=lambda x: x[1], reverse=True)[:top_k]
+    return sorted_candidates
 
-Finding vocabulary size
-
-def calc_of_V(sentence_list,word_count_corpus):
-  v=0
-  for i in range(len(sentence_list)):
-    if sentence_list[i] in word_count_corpus:
-      v+=word_count_corpus.get(sentence_list[i])
-  return v
-v=calc_of_V(sentence_list,word_count_corpus)
-v
-list_of_ngrams_of_sent
-list_of_ngrams_of_sent[0][1]
-
-Finding perplexity for the test sentence
-
-def perplexity_of_test_sent(list_of_ngrams_of_sent,n,v):
-  sent_prob=1
-  for j in list_of_ngrams_of_sent:
-    given_n_word=j[0]
-    current_word=j[1]
-    if ((given_n_word, current_word)) in gram_n1_count.keys():
-      numerator1=gram_n1_count.get((tuple(given_n_word), current_word))+1
-    if ((given_n_word, current_word)) not in gram_n1_count.keys():
-      numerator1=0+1
-    if given_n_word in gram_n0_count.keys():
-      denominator1=gram_n0_count.get(tuple(given_n_word))+v
-    if given_n_word not in gram_n0_count.keys():
-      denominator1=0+v
-    probobality=numerator1/denominator1
-    sent_prob*=probobality
-  
-  return sent_prob
-sent_prob=perplexity_of_test_sent(list_of_ngrams_of_sent,n,v)
-import math
-print("perplexity of the test sentence in with respect to corpus")
-math.pow(sent_prob,(1/len(sentence_list))) # perplexity of test sentence
-
-perplexity of the test sentence in with respect to corpus
-1.0394467634122447e-05
+# Example usage of next word prediction
+if n > 1:
+    print("\n" + "="*50)
+    print("NEXT WORD PREDICTION EXAMPLE")
+    print("="*50)
+    # Get the first few words from test sentence as history
+    example_history = tuple(sentence_list[1:n])
+    print(f"Given history: {' '.join(example_history)}")
+    predictions = predict_next_word(example_history, ngram_probs, top_k=5)
+    print("\nTop 5 predicted next words:")
+    for word, prob in predictions:
+        print(f"  {word}: {prob:.6f}")
+    print("="*50)
